@@ -1,0 +1,126 @@
+name: Blog Pipeline
+
+on:
+  push:
+    paths:
+      - 'drafts/**/*.md'
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  process-blog-draft:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install -r pipeline/requirements.txt
+          
+      - name: Get changed draft files
+        id: changed-files
+        run: |
+          # Get the most recently changed file in drafts/
+          CHANGED_FILE=$(git diff --name-only HEAD~1 HEAD | grep '^drafts/.*\.md$' | head -n 1)
+          if [ -z "$CHANGED_FILE" ]; then
+            echo "No draft files changed"
+            exit 0
+          fi
+          echo "draft_file=$CHANGED_FILE" >> $GITHUB_OUTPUT
+          
+          # Extract filename without path and extension
+          BASENAME=$(basename "$CHANGED_FILE" .md)
+          echo "basename=$BASENAME" >> $GITHUB_OUTPUT
+          
+      - name: Stage 1 - Intake & Structure
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage1_structure.py \
+            --input "${{ steps.changed-files.outputs.draft_file }}" \
+            --output "pipeline/temp/stage1_output.json"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+      - name: Stage 2 - Grounding & Research
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage2_grounding.py \
+            --input "pipeline/temp/stage1_output.json" \
+            --output "pipeline/temp/stage2_output.json"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BING_SEARCH_KEY: ${{ secrets.BING_SEARCH_KEY }}
+          
+      - name: Stage 3 - Expansion with Inverted Pyramid
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage3_expansion.py \
+            --input "pipeline/temp/stage2_output.json" \
+            --output "pipeline/temp/stage3_output.json"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+      - name: Stage 4 - Style & Polish
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage4_polish.py \
+            --input "pipeline/temp/stage3_output.json" \
+            --output "pipeline/temp/stage4_output.json"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+      - name: Stage 5 - Technical Review
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage5_review.py \
+            --input "pipeline/temp/stage4_output.json" \
+            --output "posts/${{ steps.changed-files.outputs.basename }}.md"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+      - name: Create Pull Request
+        if: steps.changed-files.outputs.draft_file != ''
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Add blog post: ${{ steps.changed-files.outputs.basename }}"
+          branch: blog-post-${{ steps.changed-files.outputs.basename }}
+          delete-branch: true
+          title: "New Blog Post: ${{ steps.changed-files.outputs.basename }}"
+          body: |
+            ## Blog Pipeline Results
+            
+            Automated pipeline has processed the draft and created a polished blog post.
+            
+            **Draft Input**: `${{ steps.changed-files.outputs.draft_file }}`
+            **Output**: `posts/${{ steps.changed-files.outputs.basename }}.md`
+            
+            ### Pipeline Stages Completed:
+            - ✅ Stage 1: Intake & Structure
+            - ✅ Stage 2: Grounding & Research  
+            - ✅ Stage 3: Expansion with Inverted Pyramid
+            - ✅ Stage 4: Style & Polish for Leaders
+            - ✅ Stage 5: Technical Review
+            
+            ### Review Checklist:
+            - [ ] Main insight clear in first paragraph?
+            - [ ] All claims properly grounded with sources?
+            - [ ] Actionable takeaways present?
+            - [ ] Tone appropriate for technical leaders?
+            - [ ] Ready to publish?
+            
+            To make edits, add comments on specific lines in the Files Changed tab.
+          labels: blog-post, automated-pipeline
+          draft: false
