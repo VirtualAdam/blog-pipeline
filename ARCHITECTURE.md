@@ -286,6 +286,62 @@ Repository Secrets:
 - Endpoints
 - Credentials
 
+## PR Comment Revision Pipeline
+
+After the initial pipeline creates a PR, reviewers can request revisions by adding comments directly on specific lines in the "Files Changed" tab. These comments are processed by a secondary pipeline that uses the LLM to apply the feedback.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PR COMMENT REVISION FLOW                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Reviewer adds comment on line in PR "Files Changed" tab     │
+│     Example: Line says "I was freaking out"                     │
+│              Comment: "Let's use a more formal tone"            │
+│                                                                  │
+│  2. GitHub Actions triggers on pull_request_review_comment      │
+│                                                                  │
+│  3. Pipeline extracts:                                           │
+│     - File path (posts/my-idea.md)                              │
+│     - Line number (e.g., line 42)                               │
+│     - Comment text ("Let's use a more formal tone")             │
+│                                                                  │
+│  4. LLM receives:                                                │
+│     - Full document for context                                  │
+│     - Target line highlighted                                    │
+│     - Reviewer's feedback as instruction                        │
+│                                                                  │
+│  5. LLM revises document:                                        │
+│     - "I was freaking out" → "I was concerned"                  │
+│     - Maintains document consistency                             │
+│     - Preserves author voice                                     │
+│                                                                  │
+│  6. Changes committed to PR branch automatically                 │
+│                                                                  │
+│  7. Bot replies to comment with summary of changes              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Supported Comment Types
+
+| Comment Type | Example | LLM Behavior |
+|-------------|---------|--------------|
+| Tone adjustment | "Use more formal language" | Revises target line with formal equivalent |
+| Clarity request | "This is unclear, please simplify" | Rewrites for clarity |
+| Technical accuracy | "This metric seems wrong" | Checks and corrects the claim |
+| Style guidance | "Make this more actionable" | Adds concrete recommendations |
+| Broader feedback | "The whole section feels too casual" | May revise multiple related lines |
+
+### Workflow File
+
+The PR comment revision is handled by `.github/workflows/pr-comment-revision.yml` which:
+- Triggers only on PRs with the `blog-post` label
+- Checks out the PR branch (not main)
+- Runs `pipeline/pr_comment_revision.py`
+- Commits changes back to the PR
+- Replies to the original comment with a summary
+
 ## Customization Points
 
 Each stage script has customizable variables:

@@ -1,0 +1,108 @@
+name: PR Comment Revision
+
+on:
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  process-comment-revision:
+    # Only run on blog-post PRs
+    if: contains(github.event.pull_request.labels.*.name, 'blog-post')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install -r pipeline/requirements.txt
+          
+      - name: Extract comment context
+        id: comment-context
+        run: |
+          # Extract relevant information from the comment event
+          echo "file_path=${{ github.event.comment.path }}" >> $GITHUB_OUTPUT
+          echo "line_number=${{ github.event.comment.original_line || github.event.comment.line }}" >> $GITHUB_OUTPUT
+          echo "comment_id=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
+          
+          # Save comment body to file (handles multi-line comments)
+          cat << 'EOF' > /tmp/comment_body.txt
+          ${{ github.event.comment.body }}
+          EOF
+          
+          echo "Comment details:"
+          echo "  File: ${{ github.event.comment.path }}"
+          echo "  Line: ${{ github.event.comment.original_line || github.event.comment.line }}"
+          echo "  Body: ${{ github.event.comment.body }}"
+          
+      - name: Process revision request
+        id: revision
+        run: |
+          python pipeline/pr_comment_revision.py \
+            --file "${{ github.event.comment.path }}" \
+            --line "${{ github.event.comment.original_line || github.event.comment.line }}" \
+            --comment-file "/tmp/comment_body.txt"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add -A
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git commit -m "Apply revision from PR comment
+
+          File: ${{ github.event.comment.path }}
+          Line: ${{ github.event.comment.original_line || github.event.comment.line }}
+          Comment: ${{ github.event.comment.body }}
+          
+          Revision applied by automated pipeline."
+          
+          git push
+          
+      - name: Reply to comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Check if revision summary exists
+            let summaryMessage = "✅ Revision applied successfully based on your feedback.";
+            try {
+              if (fs.existsSync('pipeline/temp/revision_summary.txt')) {
+                const summary = fs.readFileSync('pipeline/temp/revision_summary.txt', 'utf8');
+                summaryMessage = `✅ **Revision Applied**\n\n${summary}\n\n_Changes have been committed to this PR._`;
+              }
+            } catch (e) {
+              console.log('No summary file found, using default message');
+            }
+            
+            await github.rest.pulls.createReplyForReviewComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              comment_id: context.payload.comment.id,
+              body: summaryMessage
+            });

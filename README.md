@@ -249,6 +249,39 @@ Each stage has a `PROMPT` variable at the top - customize as needed.
 3. Use PR comments to request specific changes
 4. Can manually edit before merging
 
+## PR Comment Revisions
+
+After the pipeline creates a PR, you can request revisions by commenting directly on specific lines in the "Files Changed" tab. The AI will automatically process your feedback and commit changes.
+
+### How It Works
+
+1. **Go to the PR** → Files Changed tab
+2. **Click the + button** next to any line you want to change
+3. **Write your feedback** as a comment (like a prompt to the AI)
+4. **Submit the comment** → Pipeline automatically triggers
+
+### Example Comments
+
+| Original Line | Your Comment | AI Revision |
+|--------------|--------------|-------------|
+| "I was freaking out about the deadline" | "Use more formal tone" | "I was concerned about the deadline" |
+| "This is a really good approach" | "Be more specific" | "This approach reduces deployment time by 40%" |
+| "The system handles many cases" | "Add concrete examples" | "The system handles user authentication, rate limiting, and error recovery" |
+| "Teams should consider this" | "Make it more actionable" | "Engineering leads should implement this pattern in their CI/CD pipeline within the next sprint" |
+
+### Tips for Effective Comments
+
+- **Be specific**: "Use formal tone" works better than "fix this"
+- **Give direction**: "Emphasize the cost savings" helps the AI understand intent
+- **Reference context**: "This contradicts paragraph 2" helps with consistency
+- **Request scope**: "Apply this tone to the whole section" for broader changes
+
+### What Triggers the Revision Pipeline
+
+- Comments on PRs with the `blog-post` label
+- Only line-specific comments (not general PR comments)
+- The bot will reply to your comment with a summary of changes made
+
 ### Iterating on Drafts
 ```bash
 # Edit your draft
