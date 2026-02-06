@@ -90,7 +90,36 @@ jobs:
             --output "posts/${{ steps.changed-files.outputs.basename }}.md"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          
+
+      - name: Stage 6 - Image Prompt Generation
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage6_image_prompts.py \
+            --input "posts/${{ steps.changed-files.outputs.basename }}.md" \
+            --metadata "pipeline/temp/stage4_output.json" \
+            --output "pipeline/temp/stage6_output.json"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Stage 7 - Image Generation (Nano Banana)
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage7_image_gen.py \
+            --input "pipeline/temp/stage6_output.json" \
+            --output-dir "pipeline/temp/images/${{ steps.changed-files.outputs.basename }}" \
+            --output "pipeline/temp/stage7_output.json"
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Stage 8 - Image Assembly
+        if: steps.changed-files.outputs.draft_file != ''
+        run: |
+          python pipeline/stage8_assemble.py \
+            --blog-input "posts/${{ steps.changed-files.outputs.basename }}.md" \
+            --image-results "pipeline/temp/stage7_output.json" \
+            --image-plan "pipeline/temp/stage6_output.json" \
+            --output "posts/${{ steps.changed-files.outputs.basename }}.md"
+
       - name: Create Pull Request
         if: steps.changed-files.outputs.draft_file != ''
         uses: peter-evans/create-pull-request@v6
@@ -113,12 +142,17 @@ jobs:
             - ✅ Stage 3: Expansion with Inverted Pyramid
             - ✅ Stage 4: Style & Polish for Leaders
             - ✅ Stage 5: Technical Review
+            - ✅ Stage 6: Image Prompt Generation
+            - ✅ Stage 7: Image Generation (Nano Banana)
+            - ✅ Stage 8: Image Assembly
             
             ### Review Checklist:
             - [ ] Main insight clear in first paragraph?
             - [ ] All claims properly grounded with sources?
             - [ ] Actionable takeaways present?
             - [ ] Tone appropriate for technical leaders?
+            - [ ] Hero image fits the post theme?
+            - [ ] Diagrams are clear and accurate?
             - [ ] Ready to publish?
             
             To make edits, add comments on specific lines in the Files Changed tab.

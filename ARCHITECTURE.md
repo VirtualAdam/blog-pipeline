@@ -74,6 +74,39 @@
 │  └──────────────────────────────────────────────────────────┘  │
 │                              ↓                                   │
 │  ┌──────────────────────────────────────────────────────────┐  │
+│  │ STAGE 6: Image Prompt Generation                           │  │
+│  │ ───────────────────────────────────────────────────────── │  │
+│  │ Input:  posts/my-idea.md + Stage 4 metadata               │  │
+│  │ AI:     Analyze blog for visual opportunities:             │  │
+│  │         - Create hero image prompt                         │  │
+│  │         - Identify sections needing diagrams               │  │
+│  │         - Generate detailed Nano Banana prompts            │  │
+│  │ Output: JSON with image plan + prompts                    │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              ↓                                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ STAGE 7: Image Generation (Nano Banana)                    │  │
+│  │ ───────────────────────────────────────────────────────── │  │
+│  │ Input:  Stage 6 image plan                                │  │
+│  │ API:    Gemini Imagen 3.0 (Nano Banana Pro):               │  │
+│  │         - Generate hero image (16:9)                       │  │
+│  │         - Generate section diagrams (16:9)                 │  │
+│  │         - Retry with backoff on failure                    │  │
+│  │ Output: PNG images + generation results JSON              │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              ↓                                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ STAGE 8: Image Assembly                                    │  │
+│  │ ───────────────────────────────────────────────────────── │  │
+│  │ Input:  Blog post + generated images                      │  │
+│  │ Logic:  Insert images inline:                              │  │
+│  │         - Hero image below frontmatter                    │  │
+│  │         - Diagrams after matching H2 headings             │  │
+│  │         - Copy images to posts/{slug}/ directory          │  │
+│  │ Output: Final posts/my-idea.md with image references      │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              ↓                                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
 │  │ Create Pull Request                                        │  │
 │  │ ───────────────────────────────────────────────────────── │  │
 │  │ - Title: "New Blog Post: my-idea"                         │  │
@@ -188,6 +221,55 @@ tags: technical-leadership, AI, documentation
 [polished content]
 ```
 
+### Stage 5 → Stage 6
+
+**Stage 6 analyzes the blog and creates image prompts:**
+
+```json
+{
+  "hero": {
+    "description": "Abstract visualization of AI context flowing between systems",
+    "prompt": "Create a visually striking hero image... [detailed prompt]"
+  },
+  "diagrams": [
+    {
+      "image_id": "diagram_1",
+      "target_section": "How Context Files Work",
+      "diagram_type": "architecture",
+      "prompt": "Create a system architecture diagram... [detailed prompt]"
+    }
+  ]
+}
+```
+
+### Stage 6 → Stage 7
+
+**Stage 7 calls Gemini Nano Banana Pro to generate images:**
+- Hero image → `pipeline/temp/images/{slug}/hero.png`
+- Diagrams → `pipeline/temp/images/{slug}/diagram_1.png`, etc.
+- Retries with exponential backoff on failure
+- Skips images that already exist (idempotent)
+
+### Stage 7 → Stage 8
+
+**Stage 8 assembles the final post with images inline:**
+
+```markdown
+---
+title: "AI-Readable Context Files"
+---
+
+![Hero Image](ai-readable-context-files/hero.png)
+
+[intro paragraph]
+
+## How Context Files Work
+
+![Architecture diagram showing context file flow](ai-readable-context-files/diagram_1.png)
+
+[section content]
+```
+
 ## Technology Stack
 
 ```
@@ -213,6 +295,14 @@ tags: technical-leadership, AI, documentation
 └─────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────┐
+│ Gemini Nano Banana Pro (Images)      │
+│ - Imagen 3.0 via Google GenAI SDK    │
+│ - Hero images + section diagrams     │
+│ - ~1-4 image generations per post    │
+│ - Accurate text rendering            │
+└─────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────┐
 │ GitHub (Storage & PR)                │
 │ - Stores all versions                │
 │ - Creates PR for review              │
@@ -229,13 +319,14 @@ Per blog post:
 | Azure OpenAI (GPT-4) | $0.15 | 5 calls × ~2K tokens each |
 | Azure OpenAI (GPT-3.5) | $0.03 | Alternative cheaper option |
 | Bing Search | $0.03 | ~5 searches |
+| Gemini Nano Banana (Images) | $0.08 | ~1-4 images per post |
 | GitHub Actions | $0.00 | Free tier: 2000 min/month |
-| **Total (GPT-4)** | **$0.18** | |
-| **Total (GPT-3.5)** | **$0.06** | |
+| **Total (GPT-4 + Images)** | **$0.26** | |
+| **Total (GPT-3.5 + Images)** | **$0.14** | |
 
 **Monthly estimate (10 posts):**
-- GPT-4: $1.80/month
-- GPT-3.5: $0.60/month
+- GPT-4 + Images: $2.60/month
+- GPT-3.5 + Images: $1.40/month
 
 ## File Structure
 
@@ -252,10 +343,19 @@ your-blog-repo/
 │   ├── stage3_expansion.py            # Write full draft
 │   ├── stage4_polish.py               # Apply style
 │   ├── stage5_review.py               # Final review
+│   ├── stage6_image_prompts.py        # Generate image prompts
+│   ├── stage7_image_gen.py            # Call Gemini Nano Banana
+│   ├── stage8_assemble.py             # Insert images into post
 │   └── temp/                          # Temporary stage outputs
 │       ├── stage1_output.json
 │       ├── stage2_output.json
-│       └── ...
+│       ├── ...
+│       ├── stage6_output.json         # Image plan + prompts
+│       ├── stage7_output.json         # Generation results
+│       └── images/                    # Generated images (temp)
+│           └── {slug}/
+│               ├── hero.png
+│               └── diagram_1.png
 │
 ├── drafts/                            # Your rough notes (INPUT)
 │   ├── example-ai-readable-status.md
@@ -263,6 +363,9 @@ your-blog-repo/
 │
 ├── posts/                             # Generated posts (OUTPUT)
 │   ├── ai-readable-status.md
+│   ├── ai-readable-status/            # Post images
+│   │   ├── hero.png
+│   │   └── diagram_1.png
 │   └── your-ideas.md
 │
 └── _posts/                            # Or whatever your blog uses
@@ -278,7 +381,8 @@ Repository Secrets:
 ├── AZURE_OPENAI_ENDPOINT      # Your Azure endpoint
 ├── AZURE_OPENAI_KEY           # API key (encrypted)
 ├── AZURE_OPENAI_DEPLOYMENT    # Model deployment name
-└── BING_SEARCH_KEY            # Bing API key (optional)
+├── BING_SEARCH_KEY            # Bing API key (optional)
+└── GEMINI_API_KEY             # Google Gemini API key (for Nano Banana images)
 ```
 
 **Never committed to repo:**
@@ -390,5 +494,8 @@ Actions → Blog Pipeline → [Latest run]
   ✅ Stage 3: 38s
   ✅ Stage 4: 22s
   ✅ Stage 5: 15s
+  ✅ Stage 6: 8s (1 hero + 2 diagrams planned)
+  ✅ Stage 7: 25s (3 images generated)
+  ✅ Stage 8: 2s (images assembled)
   ✅ Create PR
 ```

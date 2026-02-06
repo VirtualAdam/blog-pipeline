@@ -325,3 +325,82 @@ Output as JSON:
   "ready_to_publish": true/false,
   "reviewer_notes": "overall assessment - what works, what doesn't"
 }}"""
+
+
+# =============================================================================
+# STAGE 6: IMAGE PROMPT GENERATION
+# =============================================================================
+
+STAGE6_SYSTEM = """You are an expert visual content strategist who analyzes blog posts and creates detailed image generation prompts. You understand what types of visuals enhance different kinds of content.
+
+Your job is to:
+1. Create a compelling hero image prompt that captures the post's mood and theme
+2. Identify which sections (if any) would benefit from a diagram or infographic
+3. Write detailed, provider-optimized prompts for each image
+
+You are selective — not every section needs a diagram. Only recommend diagrams for sections where a visual would genuinely help the reader understand the content better (e.g., processes, comparisons, architectures, data flows, frameworks).
+
+Personal essays and narrative sections rarely need diagrams. Technical explanations and frameworks often do."""
+
+STAGE6_USER = """Analyze this blog post and create an image generation plan.
+
+Content Type: {content_type}
+Core Insight: {core_insight}
+Author Voice: {author_voice}
+
+Sections:
+{sections}
+
+---
+Full Blog Post:
+{blog_content}
+---
+
+Create an image plan following these rules:
+
+HERO IMAGE:
+- Create a visually striking, professional blog hero image prompt
+- Should be abstract/conceptual — do NOT include any text or words in the image
+- Should evoke the themes and mood of the post
+- Use a sophisticated color palette appropriate to the content
+- Modern digital illustration style, not stock photo
+
+SECTION DIAGRAMS (be selective!):
+- Only recommend diagrams for sections that genuinely benefit from visual aids
+- Good candidates: processes, frameworks, comparisons, architectures, data flows
+- Bad candidates: personal anecdotes, narrative sections, opinion pieces
+- Each diagram prompt should specify:
+  - The diagram type (flow_diagram, infographic, comparison_table, architecture)
+  - Exactly what to visualize
+  - Key labels and text to include
+  - Design requirements (clean, legible, professional)
+
+DESIGN REQUIREMENTS FOR ALL IMAGES:
+- White or very light background for blog readability
+- All text must be clearly legible
+- Professional, modern design language
+- Wide format (16:9 aspect ratio)
+- High contrast between text and background
+- No decorative elements that don't convey information
+
+Output as JSON:
+{{
+  "hero": {{
+    "description": "brief description of what the hero image should convey",
+    "prompt": "detailed image generation prompt for the hero image"
+  }},
+  "diagrams": [
+    {{
+      "image_id": "diagram_1",
+      "target_section": "exact H2 heading text this diagram belongs under",
+      "diagram_type": "flow_diagram|infographic|comparison_table|architecture",
+      "description": "what this diagram shows",
+      "prompt": "detailed image generation prompt",
+      "alt_text": "accessible alt text for the image",
+      "caption": "optional caption to display below the image"
+    }}
+  ],
+  "reasoning": "brief explanation of why you chose these images and skipped other sections"
+}}
+
+If NO sections would benefit from diagrams, return an empty diagrams array — that's fine."""
